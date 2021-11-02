@@ -112,10 +112,12 @@ class PostController extends Controller
         $this->authorize('update', $post);
         $user = Auth::user();
 
-        $post->title = $request->title;
-        $post->body = $request->body;
-        $post->category_id = $request->category_id;
-        $post->save();
+        $post->update($request->only('title', 'body', 'category_id'));
+
+        // $post->title = $request->title;
+        // $post->body = $request->body;
+        // $post->category_id = $request->category_id;
+        // $post->save();
 
         $post->tags()->sync($request->tags);
 

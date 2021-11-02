@@ -24,8 +24,8 @@ class PostFactory extends Factory
         return [
             'title' => $this->faker->sentence(),
             'body' => $this->faker->text(200),
-            'category_id' => 1,
-            'user_id' => 1,
+            // 'category_id' => 1,
+            // 'user_id' => 1,
         ];
     }
 }

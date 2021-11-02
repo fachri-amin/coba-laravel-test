@@ -3,14 +3,18 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\WithFaker;
 use Tests\TestCase;
 use App\Models\{Post, Category, Tag, User};
 use Auth;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
 
 class PostTest extends TestCase
 {
     use RefreshDatabase;
+    use DatabaseMigrations;
     /**
      * A basic feature test example.
      *
@@ -161,17 +165,24 @@ class PostTest extends TestCase
 
     /** @test */
     public function can_edit_post () {
+        //! note: comment sqlite and memory on phpunit.xml to test it
         $user = User::factory()->create();
-        $this->actingAs($user);
         $category = Category::factory()->create();
-        $post = Post::factory()->create(['category_id' => $category->id]);
+        $tag = Tag::factory()->create();
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
+        $this->actingAs($user);
+        $request_data = [
+            'title' => $post->title,
+            'body'  => 'post body updated',
+            'category_id' => $post->category_id,
+            'tags'  => [
+                $tag->id
+            ]
+        ];
 
-        $post->title = 'post title updated';
-        $post->save();
+        $response = $this->json('PUT','api/posts/'.$post->id, $request_data, ['Accept' => 'Application/json']);
 
-        $response = $this->put('api/posts/'.$post->id, $post->toArray());
-
-        $this->assertDatabaseHas('posts', ['id' => $post->id, 'title' => 'post title updated']);
+        $this->assertDatabaseHas('posts', ['id' => $post->id, 'body' => 'post body updated']);
     }
 
     /** @test */
@@ -179,7 +190,7 @@ class PostTest extends TestCase
         $user = User::factory()->create();
         $this->actingAs($user);
         $category = Category::factory()->create();
-        $post = Post::factory()->create(['category_id' => $category->id]);
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
 
         $post->title = null;
 
@@ -192,7 +203,7 @@ class PostTest extends TestCase
         $user = User::factory()->create();
         $this->actingAs($user);
         $category = Category::factory()->create();
-        $post = Post::factory()->create(['category_id' => $category->id]);
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
 
         $post->body = null;
 
@@ -205,7 +216,7 @@ class PostTest extends TestCase
         $user = User::factory()->create();
         $this->actingAs($user);
         $category = Category::factory()->create();
-        $post = Post::factory()->create(['category_id' => $category->id]);
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
 
         $post->category_id = null;
 
@@ -214,13 +225,62 @@ class PostTest extends TestCase
     }
 
     /** @test */
+    public function unauthenticate_user_can_not_update_post () {
+        $this->withoutExceptionHandling();
+        $user = User::factory()->create();
+        $category = Category::factory()->create();
+        $tag = Tag::factory()->create();
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
+        $post->tags()->attach([$tag->id]);
+
+        $post->title = 'title updated';
+
+        $this->expectException(AuthenticationException::class);
+        $this->json('PUT','api/posts/'.$post->id, $post->toArray(), ['Accept' => 'application/json'])
+            ->assertStatus(401);
+    }
+
+    /** @test */
+    public function unauthorize_user_can_not_update_post () {
+        $this->withoutExceptionHandling();
+        $user1 = User::factory()->create();
+        $user2 = User::factory()->create();
+        $category = Category::factory()->create();
+        $tag = Tag::factory()->create();
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user1->id]);
+        $post->tags()->attach([$tag->id]);
+
+        $post->title = 'title updated';
+        $this->actingAs($user2);
+
+        // $this->expectException('Illuminate\Auth\AuthenticationException');
+        $this->expectException(AuthorizationException::class);
+        $response = $this->json('PUT','api/posts/'.$post->id, $post->toArray(), ['Accept' => 'application/json'])
+            ->assertStatus(403);
+    }
+
+    /** @test */
     public function can_delete_post () {
         $user = User::factory()->create();
         $this->actingAs($user);
         $category = Category::factory()->create();
-        $post = Post::factory()->create(['category_id' => $category->id]);
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
 
-        $response = $this->delete('posts/'.$post->id);
+        $response = $this->delete('api/posts/'.$post->id);
         $this->assertDatabaseMissing('posts', $post->toArray());
+    }
+
+    /** @test */
+    public function unauthenticated_user_can_not_delete_post () {
+        $user = User::factory()->create();
+        // dd($user);
+        $category = Category::factory()->create();
+        $post = Post::factory()->create(['category_id' => $category->id, 'user_id' => $user->id]);
+
+        // $this->expectException(AuthenticationException::class);
+        // dd($post->id);
+        $response = $this->deleteJson('api/posts/'.$post->id)->assertStatus(401);
+        // dd($response);
+        // $this->assertDatabaseHas('posts', $post->toArray());
     }
 }
